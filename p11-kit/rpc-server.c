@@ -729,14 +729,29 @@ rpc_C_Finalize (CK_X_FUNCTION_LIST *self,
 	END_CALL;
 }
 
+static void fix_info(const char *id, CK_INFO *info)
+{
+	unsigned len;
+	unsigned i;
+
+	/* replace description */
+	snprintf((char*)info->manufacturerID, sizeof(info->manufacturerID), "V:%s", id);
+	len = strlen((char*)info->manufacturerID);
+
+	for (i=len;i<sizeof(info->manufacturerID);i++)
+		info->manufacturerID[i] = ' ';
+}
+
 static CK_RV
-rpc_C_GetInfo (CK_X_FUNCTION_LIST *self,
+rpc_C_GetInfo (const char *id,
+	       CK_X_FUNCTION_LIST *self,
                p11_rpc_message *msg)
 {
 	CK_INFO info;
 
 	BEGIN_CALL (GetInfo);
 	PROCESS_CALL ((self, &info));
+	fix_info (id, &info);
 		OUT_INFO (info);
 	END_CALL;
 }
@@ -1785,7 +1800,8 @@ rpc_C_GenerateRandom (CK_X_FUNCTION_LIST *self,
 }
 
 bool
-p11_rpc_server_handle (CK_X_FUNCTION_LIST *self,
+p11_rpc_server_handle (const char *name,
+		       CK_X_FUNCTION_LIST *self,
                        p11_buffer *request,
                        p11_buffer *response)
 {
@@ -1817,9 +1833,13 @@ p11_rpc_server_handle (CK_X_FUNCTION_LIST *self,
 	case P11_RPC_CALL_##name: \
 		ret = rpc_##name (self, &msg); \
 		break;
+	#define CASE_CALL_ID(id, name) \
+	case P11_RPC_CALL_##name: \
+		ret = rpc_##name (id, self, &msg); \
+		break;
 	CASE_CALL (C_Initialize)
 	CASE_CALL (C_Finalize)
-	CASE_CALL (C_GetInfo)
+	CASE_CALL_ID (name, C_GetInfo)
 	CASE_CALL (C_GetSlotList)
 	CASE_CALL (C_GetSlotInfo)
 	CASE_CALL (C_GetTokenInfo)
@@ -1938,7 +1958,8 @@ SIGHANDLER_T ocsignal(int signum, SIGHANDLER_T handler)
 }
 
 static int
-serve_module (CK_FUNCTION_LIST *module,
+serve_module (const char *name,
+	      CK_FUNCTION_LIST *module,
               p11_buffer *options, p11_buffer *buffer,
               p11_virtual *virt,
               int fd)
@@ -2006,7 +2027,7 @@ serve_module (CK_FUNCTION_LIST *module,
 			goto out;
 		}
 
-		if (!p11_rpc_server_handle (&virt->funcs, buffer, buffer)) {
+		if (!p11_rpc_server_handle (name, &virt->funcs, buffer, buffer)) {
 			p11_message ("unexpected error handling rpc message");
 			goto out;
 		}
@@ -2190,7 +2211,7 @@ p11_kit_remote_serve_module (CK_FUNCTION_LIST *module,
 			case 0:
 				/* child */
 				sigprocmask(SIG_UNBLOCK, &blockset, NULL);
-				serve_module (module, &options, &buffer, &virt, cfd);
+				serve_module (socket_file, module, &options, &buffer, &virt, cfd);
 				_exit(0);
 			default:
 				children_avail++;
