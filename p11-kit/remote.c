@@ -47,6 +47,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <grp.h>
+#include <pwd.h>
 
 int
 main (int argc,
@@ -54,6 +57,8 @@ main (int argc,
 {
 	CK_FUNCTION_LIST *module;
 	char *socket_file = NULL;
+	uid_t uid = -1;
+	gid_t gid = -1;
 	int opt;
 	int ret;
 
@@ -61,17 +66,21 @@ main (int argc,
 		opt_verbose = 'v',
 		opt_help = 'h',
 		opt_socket = 's',
+		opt_user = 'u',
+		opt_group = 'g',
 	};
 
 	struct option options[] = {
 		{ "verbose", no_argument, NULL, opt_verbose },
 		{ "help", no_argument, NULL, opt_help },
 		{ "socket", required_argument, NULL, opt_socket },
+		{ "user", required_argument, NULL, opt_user },
+		{ "group", required_argument, NULL, opt_group },
 		{ 0 },
 	};
 
 	p11_tool_desc usages[] = {
-		{ 0, "usage: p11-kit remote <module> -s <socket-file>" },
+		{ 0, "usage: p11-kit remote <module> -s <socket-file> -u <allowed-user> -g <allowed-group>" },
 		{ 0 },
 	};
 
@@ -83,6 +92,24 @@ main (int argc,
 		case opt_socket:
 			socket_file = strdup(optarg);
 			break;
+		case opt_group: {
+			const struct group* grp = getgrnam(optarg);
+			if (grp == NULL) {
+				p11_message ("unknown group: %s", optarg);
+				return 2;
+			}
+			gid = grp->gr_gid;
+			break;
+		}
+		case opt_user: {
+			const struct passwd* pwd = getpwnam(optarg);
+			if (pwd == NULL) {
+				p11_message ("unknown user: %s", optarg);
+				return 2;
+			}
+			uid = pwd->pw_uid;
+			break;
+		}
 		case opt_help:
 		case '?':
 			p11_tool_usage (usages, options);
@@ -110,7 +137,7 @@ main (int argc,
 	if (module == NULL)
 		return 1;
 
-	ret = p11_kit_remote_serve_module (module, socket_file);
+	ret = p11_kit_remote_serve_module (module, socket_file, uid, gid);
 	p11_kit_module_release (module);
 
 	return ret;
