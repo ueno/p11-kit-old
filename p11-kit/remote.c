@@ -63,6 +63,7 @@ main (int argc,
 	int ret, e;
 	const struct passwd* pwd;
 	const struct group* grp;
+	unsigned foreground = 1;
 
 	enum {
 		opt_verbose = 'v',
@@ -72,11 +73,13 @@ main (int argc,
 		opt_group = 'g',
 		opt_run_as_user = 'a',
 		opt_run_as_group = 'z',
+		opt_foreground = 'f',
 	};
 
 	struct option options[] = {
 		{ "verbose", no_argument, NULL, opt_verbose },
 		{ "help", no_argument, NULL, opt_help },
+		{ "foreground", no_argument, NULL, opt_foreground },
 		{ "socket", required_argument, NULL, opt_socket },
 		{ "user", required_argument, NULL, opt_user },
 		{ "group", required_argument, NULL, opt_group },
@@ -132,6 +135,9 @@ main (int argc,
 			}
 			run_as_uid = pwd->pw_uid;
 			break;
+		case opt_foreground:
+			foreground = 1;
+			break;
 		case opt_help:
 		case '?':
 			p11_tool_usage (usages, options);
@@ -181,7 +187,7 @@ main (int argc,
 	if (module == NULL)
 		return 1;
 
-	ret = p11_kit_remote_serve_module (module, socket_file, uid, gid);
+	ret = p11_kit_remote_serve_module (module, socket_file, uid, gid, foreground);
 	p11_kit_module_release (module);
 
 	return ret;

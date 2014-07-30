@@ -2080,7 +2080,8 @@ int
 p11_kit_remote_serve_module (CK_FUNCTION_LIST *module,
                              const char *socket_file,
                              uid_t uid,
-                             gid_t gid)
+                             gid_t gid,
+			     unsigned foreground)
 {
 	p11_virtual virt;
 	p11_buffer options;
@@ -2134,9 +2135,11 @@ p11_kit_remote_serve_module (CK_FUNCTION_LIST *module,
 	}
 
 	/* run as daemon */
-	if (daemon(0,0) == -1) {
-		e = errno;
-		p11_message ("could not daemonize: %s", strerror(e));
+	if (foreground == 0) {
+		if (daemon(0,0) == -1) {
+			e = errno;
+			p11_message ("could not daemonize: %s", strerror(e));
+		}
 	}
 
 	rc = listen(sd, 1024);
