@@ -2173,7 +2173,7 @@ p11_kit_remote_serve_module (CK_FUNCTION_LIST *module,
 
 		if (ret == 0 && children_avail == 0) { /* timeout */
 			p11_message ("no connections to %s for %u secs, exiting", socket_file, timeout);
-			exit(0);
+			goto exit;
 		}
 
 		sa_len = sizeof(sa);
@@ -2234,4 +2234,7 @@ p11_kit_remote_serve_module (CK_FUNCTION_LIST *module,
 	p11_virtual_uninit (&virt);
 
 	return ret;
+ exit:
+	remove(socket_file);
+	exit(0);
 }
