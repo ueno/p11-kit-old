@@ -64,6 +64,7 @@ main (int argc,
 	const struct passwd* pwd;
 	const struct group* grp;
 	unsigned foreground = 1;
+	unsigned timeout = 0;
 
 	enum {
 		opt_verbose = 'v',
@@ -74,6 +75,7 @@ main (int argc,
 		opt_run_as_user = 'a',
 		opt_run_as_group = 'z',
 		opt_foreground = 'f',
+		opt_timeout = 't',
 	};
 
 	struct option options[] = {
@@ -85,6 +87,7 @@ main (int argc,
 		{ "group", required_argument, NULL, opt_group },
 		{ "run-as-user", required_argument, NULL, opt_run_as_user },
 		{ "run-as-group", required_argument, NULL, opt_run_as_group },
+		{ "timeout", required_argument, NULL, opt_timeout },
 		{ 0 },
 	};
 
@@ -102,6 +105,9 @@ main (int argc,
 			break;
 		case opt_socket:
 			socket_file = strdup(optarg);
+			break;
+		case opt_timeout:
+			timeout = atoi(optarg);
 			break;
 		case opt_group:
 			grp = getgrnam(optarg);
@@ -187,7 +193,7 @@ main (int argc,
 	if (module == NULL)
 		return 1;
 
-	ret = p11_kit_remote_serve_module (module, socket_file, uid, gid, foreground);
+	ret = p11_kit_remote_serve_module (module, socket_file, uid, gid, foreground, timeout);
 	p11_kit_module_release (module);
 
 	return ret;
