@@ -25,6 +25,7 @@ libp11_common_la_SOURCES = \
 	common/message.c common/message.h \
 	common/path.c common/path.h \
 	common/pkcs11.h common/pkcs11x.h common/pkcs11i.h \
+	common/tpool.c common/tpool.h \
 	common/url.c common/url.h \
 	$(NULL)
 
@@ -61,6 +62,7 @@ CHECK_PROGS += \
 	test-path \
 	test-lexer \
 	test-message \
+	test-tpool \
 	$(NULL)
 
 test_array_SOURCES = common/test-array.c
@@ -95,6 +97,9 @@ test_path_LDADD = $(common_LIBS)
 
 test_tests_SOURCES = common/test-tests.c
 test_tests_LDADD = $(common_LIBS)
+
+test_tpool_SOURCES = common/test-tpool.c
+test_tpool_LDADD = $(common_LIBS)
 
 test_url_SOURCES = common/test-url.c
 test_url_LDADD = $(common_LIBS)
