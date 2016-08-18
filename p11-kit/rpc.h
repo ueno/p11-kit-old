@@ -92,4 +92,37 @@ p11_rpc_status         p11_rpc_transport_write     (int fd,
                                                     p11_buffer *options,
                                                     p11_buffer *buffer);
 
+#ifndef P11_DESTROYER_DEFINED
+#define P11_DESTROYER_DEFINED
+
+typedef void         (*p11_destroyer)          (void *data);
+
+#endif
+
+typedef struct _p11_rpc_async_server p11_rpc_async_server;
+typedef struct _p11_rpc_async_call p11_rpc_async_call;
+
+typedef void           (* p11_rpc_async_call_ready)    (p11_rpc_async_call *call,
+							p11_rpc_status status,
+							void *data);
+
+p11_rpc_async_server * p11_rpc_async_server_new        (CK_FUNCTION_LIST *module);
+
+void                   p11_rpc_async_server_free       (p11_rpc_async_server *server);
+
+p11_rpc_async_call *   p11_rpc_async_call_new          (p11_rpc_async_server *server,
+							p11_buffer *request,
+							p11_rpc_async_call_ready ready,
+							void *data,
+							p11_destroyer data_destroy);
+
+void                   p11_rpc_async_call_free         (p11_rpc_async_call *call);
+
+bool                   p11_rpc_async_call_invoke       (p11_rpc_async_call *call);
+
+uint32_t               p11_rpc_async_call_get_serial   (p11_rpc_async_call *call);
+
+void                   p11_rpc_async_call_steal_output (p11_rpc_async_call *call,
+							p11_buffer *buffer);
+
 #endif /* __P11_RPC_H__ */

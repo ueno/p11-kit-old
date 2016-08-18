@@ -354,6 +354,7 @@ test_byte_array_static (void)
 
 static p11_virtual base;
 static unsigned int rpc_initialized = 0;
+static p11_rpc_async_server *rpc_server;
 
 static CK_RV
 rpc_initialize (p11_rpc_client_vtable *vtable,
@@ -407,6 +408,84 @@ rpc_finalize (p11_rpc_client_vtable *vtable,
 	assert_str_eq (vtable->data, "vtable-data");
 	assert_num_cmp (p11_forkid, ==, rpc_initialized);
 	rpc_initialized = 0;
+}
+
+struct _async_ready_data
+{
+	pthread_mutex_t lock;
+	pthread_cond_t cond;
+	bool active;
+	p11_rpc_status status;
+};
+
+static struct _async_ready_data *
+async_ready_data_new (void)
+{
+	struct _async_ready_data *data;
+
+	data = calloc (1, sizeof (struct _async_ready_data));
+
+	pthread_mutex_init (&data->lock, 0);
+	pthread_cond_init (&data->cond, 0);
+
+	data->active = true;
+
+	return data;
+}
+
+static void
+async_ready_data_free (struct _async_ready_data *data)
+{
+	pthread_mutex_destroy (&data->lock);
+	pthread_cond_destroy (&data->cond);
+	free (data);
+}
+
+static void
+async_ready (p11_rpc_async_call *call,
+	     p11_rpc_status status,
+	     void *_data)
+{
+	struct _async_ready_data *data = _data;
+
+	pthread_mutex_lock (&data->lock);
+	pthread_cond_signal (&data->cond);
+	data->active = false;
+	data->status = status;
+	pthread_mutex_unlock (&data->lock);
+}
+
+static CK_RV
+rpc_transport_async (p11_rpc_client_vtable *vtable,
+		     p11_buffer *request,
+		     p11_buffer *response)
+{
+	struct _async_ready_data *data;
+	p11_rpc_async_call *call;
+	bool ret;
+
+	assert_str_eq (vtable->data, "vtable-data");
+
+	data = async_ready_data_new ();
+
+	call = p11_rpc_async_call_new (rpc_server,
+				       request,
+				       async_ready,
+				       data,
+				       (p11_destroyer) async_ready_data_free);
+	ret = p11_rpc_async_call_invoke (call);
+	assert (ret == true);
+
+	pthread_mutex_lock (&data->lock);
+	while (data->active)
+		pthread_cond_wait (&data->cond, &data->lock);
+	assert (data->status == P11_RPC_OK);
+	pthread_mutex_unlock (&data->lock);
+
+	p11_rpc_async_call_steal_output (call, response);
+	p11_rpc_async_call_free (call);
+
+	return CKR_OK;
 }
 
 static void
@@ -1003,6 +1082,34 @@ test_fork_and_reinitialize (void)
 
 #endif /* OS_UNIX */
 
+static void
+test_async_initialize (void)
+{
+	p11_rpc_client_vtable vtable = { "vtable-data", rpc_initialize, rpc_transport_async, rpc_finalize };
+	p11_virtual mixin;
+	bool ret;
+	CK_RV rv;
+
+	rpc_server = p11_rpc_async_server_new (&mock_module_no_slots);
+
+	/* Build up our own function list */
+	rpc_initialized = 0;
+	p11_virtual_init (&base, &p11_virtual_base, &mock_module_no_slots, NULL);
+
+	ret = p11_rpc_client_init (&mixin, &vtable);
+	assert_num_eq (true, ret);
+
+	rv = mixin.funcs.C_Initialize (&mixin.funcs, NULL);
+	assert (rv == CKR_OK);
+	assert_num_eq (p11_forkid, rpc_initialized);
+
+	rv = mixin.funcs.C_Finalize (&mixin.funcs, NULL);
+	assert (rv == CKR_OK);
+	assert_num_cmp (p11_forkid, !=, rpc_initialized);
+
+	p11_virtual_uninit (&mixin);
+}
+
 #include "test-mock.c"
 
 int
@@ -1054,6 +1161,7 @@ main (int argc,
 #ifdef OS_UNIX
 	p11_test (test_fork_and_reinitialize, "/rpc/fork-and-reinitialize");
 #endif
+	p11_test (test_async_initialize, "/rpc/async-initialize");
 
 	test_mock_add_tests ("/rpc");
 

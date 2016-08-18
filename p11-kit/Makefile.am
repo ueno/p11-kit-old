@@ -23,6 +23,7 @@ MODULE_SRCS = \
 	p11-kit/rpc-transport.c p11-kit/rpc.h \
 	p11-kit/rpc-message.c p11-kit/rpc-message.h \
 	p11-kit/rpc-client.c p11-kit/rpc-server.c \
+	p11-kit/rpc-async-server.c \
 	p11-kit/uri.c \
 	p11-kit/virtual.c p11-kit/virtual.h \
 	$(inc_HEADERS)
