@@ -127,7 +127,7 @@ p11_kit_p11_kit_LDADD = \
 	$(LTLIBINTL) \
 	$(NULL)
 
-private_PROGRAMS += p11-kit-remote
+private_PROGRAMS += p11-kit-remote p11-kit-server
 
 p11_kit_remote_SOURCES = \
 	p11-kit/remote.c \
@@ -137,6 +137,17 @@ p11_kit_remote_LDADD = \
 	libp11-tool.la \
 	libp11-common.la \
 	libp11-kit.la \
+	$(NULL)
+
+p11_kit_server_SOURCES = \
+	p11-kit/server.c \
+	$(NULL)
+
+p11_kit_server_LDADD = \
+	libp11-tool.la \
+	libp11-common.la \
+	libp11-kit.la \
+	libp11-kit-external.la \
 	$(NULL)
 
 # Tests ----------------------------------------------------------------
