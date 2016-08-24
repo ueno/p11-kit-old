@@ -32,39 +32,13 @@
  * Author: Stef Walter <stefw@collabora.co.uk>
  */
 
-#include "config.h"
+#ifndef __P11_KIT_SERVER_H__
+#define __P11_KIT_SERVER_H__
 
-#include "compat.h"
-#include "debug.h"
-#include "message.h"
-#include "path.h"
-#include "p11-kit.h"
-
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
-#include <getopt.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-#include "external.h"
-#include "tool.h"
-
-int       p11_kit_list_modules    (int argc,
+int       p11_kit_trust           (int argc,
                                    char *argv[]);
 
-static const p11_tool_command commands[] = {
-	{ "list-modules", p11_kit_list_modules, "List modules and tokens" },
-	{ "remote", p11_kit_external, "Run a specific PKCS#11 module remotely" },
-	{ P11_TOOL_FALLBACK, p11_kit_external, NULL },
-	{ 0, }
-};
+int       p11_kit_external        (int argc,
+                                   char *argv[]);
 
-int
-main (int argc,
-      char *argv[])
-{
-	return p11_tool_main (argc, argv, commands);
-}
+#endif /* __P11_KIT_SERVER_H__ */

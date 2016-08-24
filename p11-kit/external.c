@@ -34,37 +34,71 @@
 
 #include "config.h"
 
-#include "compat.h"
 #include "debug.h"
+#include "external.h"
 #include "message.h"
 #include "path.h"
-#include "p11-kit.h"
 
-#include <assert.h>
-#include <ctype.h>
 #include <errno.h>
-#include <getopt.h>
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-
-#include "external.h"
-#include "tool.h"
-
-int       p11_kit_list_modules    (int argc,
-                                   char *argv[]);
-
-static const p11_tool_command commands[] = {
-	{ "list-modules", p11_kit_list_modules, "List modules and tokens" },
-	{ "remote", p11_kit_external, "Run a specific PKCS#11 module remotely" },
-	{ P11_TOOL_FALLBACK, p11_kit_external, NULL },
-	{ 0, }
-};
+#include <string.h>
 
 int
-main (int argc,
-      char *argv[])
+p11_kit_trust (int argc,
+               char *argv[])
 {
-	return p11_tool_main (argc, argv, commands);
+	char **args;
+
+	args = calloc (argc + 2, sizeof (char *));
+	return_val_if_fail (args != NULL, 1);
+
+	args[0] = BINDIR "/trust";
+	memcpy (args + 1, argv, sizeof (char *) * argc);
+	args[argc + 1] = NULL;
+
+	execv (args[0], args);
+
+	/* At this point we have no command */
+	p11_message_err (errno, "couldn't run trust tool");
+
+	free (args);
+	return 2;
+}
+
+int
+p11_kit_external (int argc,
+                  char *argv[])
+{
+	const char *private_dir;
+	char *filename;
+	char *path;
+
+	/* These are trust commands, send them to that tool */
+	if (strcmp (argv[0], "extract") == 0) {
+		return p11_kit_trust (argc, argv);
+	} else if (strcmp (argv[0], "extract-trust") == 0) {
+		argv[0] = "extract-compat";
+		return p11_kit_trust (argc, argv);
+	}
+
+	if (asprintf (&filename, "p11-kit-%s", argv[0]) < 0)
+		return_val_if_reached (1);
+
+	private_dir = secure_getenv ("P11_KIT_PRIVATEDIR");
+	if (!private_dir || !private_dir[0])
+		private_dir = PRIVATEDIR;
+
+	/* Add our libexec directory to the path */
+	path = p11_path_build (private_dir, filename, NULL);
+	return_val_if_fail (path != NULL, 1);
+
+	argv[argc] = NULL;
+	execv (path, argv);
+
+	/* At this point we have no command */
+	p11_message ("'%s' is not a valid command. See 'p11-kit --help'", argv[0]);
+
+	free (filename);
+	free (path);
+	return 2;
 }

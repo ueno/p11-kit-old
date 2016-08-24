@@ -55,11 +55,19 @@ libp11_kit_la_LIBADD = \
 	$(NULL)
 
 noinst_LTLIBRARIES += \
-	libp11-kit-testable.la
+	libp11-kit-testable.la \
+	libp11-kit-external.la \
+	$(NULL)
 
 libp11_kit_testable_la_LDFLAGS = -no-undefined
 libp11_kit_testable_la_SOURCES = $(MODULE_SRCS)
 libp11_kit_testable_la_LIBADD = $(libp11_kit_la_LIBADD)
+
+libp11_kit_external_la_LDFLAGS = -no-undefined
+libp11_kit_external_la_SOURCES = \
+	p11-kit/external.c p11-kit/external.h \
+	$(NULL)
+libp11_kit_external_la_LIBADD = $(libp11_kit_la_LIBADD)
 
 if OS_WIN32
 
@@ -113,6 +121,7 @@ p11_kit_p11_kit_SOURCES = \
 
 p11_kit_p11_kit_LDADD = \
 	libp11-kit.la \
+	libp11-kit-external.la \
 	libp11-tool.la \
 	libp11-common.la \
 	$(LTLIBINTL) \
