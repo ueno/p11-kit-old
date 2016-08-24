@@ -39,6 +39,7 @@ libp11_test_la_SOURCES = \
 
 libp11_tool_la_SOURCES = \
 	common/tool.c common/tool.h \
+	common/unix-peer.c common/unix-peer.h \
 	$(NULL)
 
 # Tests ----------------------------------------------------------------
