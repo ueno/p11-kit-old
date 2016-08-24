@@ -51,6 +51,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -819,6 +820,80 @@ rpc_exec_init (const char *remote,
 	return &rex->base;
 }
 
+typedef struct {
+	p11_rpc_transport base;
+	struct sockaddr_un sa;
+} rpc_unix;
+
+static CK_RV
+rpc_unix_connect (p11_rpc_client_vtable *vtable,
+		    void *init_reserved)
+{
+	rpc_unix *run = (rpc_unix *)vtable;
+	int fd;
+
+	fd = socket (AF_UNIX, SOCK_STREAM, 0);
+	if (fd < 0) {
+		p11_message_err (errno, "failed to create socket for remote");
+		return CKR_DEVICE_ERROR;
+	}
+
+	if (connect (fd, (struct sockaddr *)&run->sa, sizeof (run->sa)) < 0) {
+		p11_message_err (errno, "failed to connect to socket");
+		close (fd);
+		return CKR_DEVICE_ERROR;
+	}
+
+	run->base.socket = rpc_socket_new (fd);
+	return_val_if_fail (run->base.socket != NULL, CKR_GENERAL_ERROR);
+
+	return CKR_OK;
+}
+
+static void
+rpc_unix_disconnect (p11_rpc_client_vtable *vtable,
+                     void *fini_reserved)
+{
+	rpc_unix *run = (rpc_unix *)vtable;
+
+	if (run->base.socket)
+		rpc_socket_close (run->base.socket);
+
+	/* Do the common disconnect stuff */
+	rpc_transport_disconnect (vtable, fini_reserved);
+}
+
+static void
+rpc_unix_free (void *data)
+{
+	rpc_unix *run = data;
+	rpc_unix_disconnect (data, NULL);
+	rpc_transport_uninit (&run->base);
+	free (run);
+}
+
+static p11_rpc_transport *
+rpc_unix_init (const char *remote,
+	       const char *name)
+{
+	rpc_unix *run;
+
+	run = calloc (1, sizeof (rpc_unix));
+	return_val_if_fail (run != NULL, NULL);
+
+	memset (&run->sa, 0, sizeof (run->sa));
+	run->sa.sun_family = AF_UNIX;
+	snprintf (run->sa.sun_path, sizeof (run->sa.sun_path), "%s", remote);
+
+	run->base.vtable.connect = rpc_unix_connect;
+	run->base.vtable.disconnect = rpc_unix_disconnect;
+	run->base.vtable.transport = rpc_transport_buffer;
+	rpc_transport_init (&run->base, name, rpc_unix_free);
+
+	p11_debug ("initialized rpc socket: %s", remote);
+	return &run->base;
+}
+
 #endif /* OS_UNIX */
 
 p11_rpc_transport *
@@ -840,6 +915,9 @@ p11_rpc_transport_new (p11_virtual *virt,
 	/* This is a command we can execute */
 	if (remote[0] == '|') {
 		rpc = rpc_exec_init (remote + 1, name);
+
+	} else if (remote[0] == '/') {
+		rpc = rpc_unix_init (remote, name);
 
 	} else {
 		p11_message ("remote not supported: %s", remote);
