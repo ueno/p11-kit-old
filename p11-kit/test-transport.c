@@ -43,18 +43,22 @@
 #include "p11-kit.h"
 #include "rpc.h"
 
+#include <errno.h>
 #include <sys/types.h>
 #ifdef OS_UNIX
 #include <sys/wait.h>
 #endif
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 struct {
 	char *directory;
 	char *user_config;
 	char *user_modules;
 } test;
+
+static bool server_initialized = false;
 
 static void
 setup_remote (void *unused)
@@ -84,6 +88,86 @@ setup_remote (void *unused)
 
 static void
 teardown_remote (void *unused)
+{
+	p11_test_directory_delete (test.user_modules);
+	p11_test_directory_delete (test.directory);
+
+	free (test.directory);
+	free (test.user_config);
+	free (test.user_modules);
+}
+
+static void
+setup_remote_server (void *unused)
+{
+	char *data;
+
+	test.directory = p11_test_directory ("p11-test-config");
+	test.user_modules = p11_path_build (test.directory, "modules", NULL);
+#ifdef OS_UNIX
+	if (mkdir (test.user_modules, 0700) < 0)
+#else
+	if (mkdir (test.user_modules) < 0)
+#endif
+		assert_not_reached ();
+
+	data = "user-config: only\n";
+	test.user_config = p11_path_build (test.directory, "pkcs11.conf", NULL);
+	p11_test_file_write (NULL, test.user_config, data, strlen (data));
+
+	setenv ("P11_KIT_PRIVATEDIR", BUILDDIR, 1);
+
+	if (!server_initialized) {
+		char name[64+sizeof(BUILDDIR)];
+		pid_t pid;
+		struct timeval tv;
+		int i;
+
+		gettimeofday (&tv, NULL);
+		snprintf (name, sizeof (name), BUILDDIR "/sock.%u.%u",
+			  (unsigned)tv.tv_sec, (unsigned)tv.tv_usec);
+
+		pid = fork ();
+		switch (pid) {
+		case -1:
+			assert_not_reached ();
+		case 0:
+			if (execl (BUILDDIR "/p11-kit/p11-kit",
+				   BUILDDIR "/p11-kit/p11-kit",
+				   "server", "-f", "-t", "30",
+				   BUILDDIR "/.libs/mock-two.so", name, NULL) == -1) {
+				perror ("execl");
+				assert_not_reached ();
+			}
+			exit (0);
+		default:
+			break;
+		}
+
+		if (asprintf (&data, "remote: %s", name) == -1)
+			assert_not_reached ();
+		p11_test_file_write (test.user_modules, "remote.module", data, strlen (data));
+		free (data);
+
+		/* Wait until the socket is ready */
+		for (i = 0; i < 5; i++) {
+			struct stat st;
+			if (stat (name, &st) == 0)
+				break;
+			if (errno != ENOENT)
+				assert_not_reached ();
+			p11_sleep_ms (1000);
+		}
+
+		server_initialized = true;
+	}
+
+	p11_config_user_modules = test.user_modules;
+	p11_config_user_file = test.user_config;
+}
+
+static void
+teardown_remote_server (void *unused)
 {
 	p11_test_directory_delete (test.user_modules);
 	p11_test_directory_delete (test.directory);
@@ -289,6 +373,17 @@ main (int argc,
 #endif
 
 	test_mock_add_tests ("/transport");
+
+	/* Do the same tests above against a socket-based server */
+	p11_fixture (setup_remote_server, teardown_remote_server);
+	p11_test (test_basic_exec, "/transport/server/basic");
+	p11_test (test_simultaneous_functions, "/transport/server/simultaneous-functions");
+
+#ifdef OS_UNIX
+	p11_test (test_fork_and_reinitialize, "/transport/server/fork-and-reinitialize");
+#endif
+
+	test_mock_add_tests ("/transport/server");
 
 	return  p11_test_run (argc, argv);
 }
