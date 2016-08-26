@@ -8,6 +8,23 @@ inc_HEADERS += \
 	p11-kit/uri.h \
 	$(NULL)
 
+BUILT_SOURCES = \
+	p11-kit/virtual-base.c \
+	p11-kit/virtual-stack.c \
+	$(NULL)
+
+p11-kit/virtual-base.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
+	$(AM_V_GEN) { echo '/* DO NOT EDIT! GENERATED AUTOMATICALLY! */'; \
+		$(PYTHON) $(srcdir)/p11-kit/gen-wrapper.py base \
+		$(srcdir)/common/pkcs11.h $(srcdir)/common/pkcs11i.h; \
+		} > $@-t && mv $@-t $@
+
+p11-kit/virtual-stack.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
+	$(AM_V_GEN) { echo '/* DO NOT EDIT! GENERATED AUTOMATICALLY! */'; \
+		$(PYTHON) $(srcdir)/p11-kit/gen-wrapper.py stack \
+		$(srcdir)/common/pkcs11.h $(srcdir)/common/pkcs11i.h; \
+		} > $@-t && mv $@-t $@
+
 MODULE_SRCS = \
 	p11-kit/util.c \
 	p11-kit/conf.c p11-kit/conf.h \
@@ -102,6 +119,7 @@ EXTRA_DIST += \
 	p11-kit/p11-kit-1.pc.in \
 	p11-kit/pkcs11.conf.example.in \
 	p11-kit/docs.h \
+	p11-kit/gen-wrapper.py \
 	$(NULL)
 
 bin_PROGRAMS += p11-kit/p11-kit
@@ -245,4 +263,5 @@ mock_four_la_LIBADD = $(mock_one_la_LIBADD)
 EXTRA_DIST += \
 	p11-kit/fixtures \
 	p11-kit/test-mock.c \
+	$(BUILT_SOURCES) \
 	$(NULL)
