@@ -11,6 +11,7 @@ inc_HEADERS += \
 BUILT_SOURCES = \
 	p11-kit/virtual-base.c \
 	p11-kit/virtual-stack.c \
+	p11-kit/virtual-fixed.c \
 	$(NULL)
 
 p11-kit/virtual-base.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
@@ -22,6 +23,13 @@ p11-kit/virtual-base.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
 p11-kit/virtual-stack.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
 	$(AM_V_GEN) { echo '/* DO NOT EDIT! GENERATED AUTOMATICALLY! */'; \
 		$(PYTHON) $(srcdir)/p11-kit/gen-wrapper.py stack \
+		$(srcdir)/common/pkcs11.h $(srcdir)/common/pkcs11i.h; \
+		} > $@-t && mv $@-t $@
+
+p11-kit/virtual-fixed.c: common/pkcs11.h common/pkcs11i.h p11-kit/gen-wrapper.py
+	$(AM_V_GEN) { echo '/* DO NOT EDIT! GENERATED AUTOMATICALLY! */'; \
+		$(PYTHON) $(srcdir)/p11-kit/gen-wrapper.py fixed \
+		-n $(fixed_closure) \
 		$(srcdir)/common/pkcs11.h $(srcdir)/common/pkcs11i.h; \
 		} > $@-t && mv $@-t $@
 

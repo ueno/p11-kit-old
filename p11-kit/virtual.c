@@ -932,6 +932,7 @@ binding_C_GenerateRandom (ffi_cif *cif,
 
 #endif /* WITH_FFI */
 
+#include "p11-kit/virtual-fixed.c"
 #include "p11-kit/virtual-stack.c"
 #include "p11-kit/virtual-base.c"
 
@@ -1184,6 +1185,45 @@ init_wrapper_funcs (Wrapper *wrapper)
 	return true;
 }
 
+static bool
+init_wrapper_funcs_fixed (Wrapper *wrapper, CK_FUNCTION_LIST *fixed)
+{
+	const FunctionInfo *info;
+	void **bound_to, **bound_from;
+	int i;
+
+	for (i = 0; function_info[i].name != NULL; i++) {
+		info = function_info + i;
+
+		/* Address to where we're placing the bound function */
+		bound_to = &STRUCT_MEMBER (void *, &wrapper->bound, info->module_offset);
+		bound_from = &STRUCT_MEMBER (void *, fixed, info->module_offset);
+
+		/*
+		 * See if we can just shoot straight through to the module function
+		 * without wrapping at all. If all the stacked virtual modules just
+		 * fall through, then this returns the original module function.
+		 */
+		if (!lookup_fall_through (wrapper->virt, info, bound_to))
+			*bound_to = *bound_from;
+	}
+
+	/* Always bind the C_GetFunctionList function itself */
+	wrapper->bound.C_GetFunctionList = fixed->C_GetFunctionList;
+
+	/*
+	 * These functions are used as a marker to indicate whether this is
+	 * one of our CK_FUNCTION_LIST_PTR sets of functions or not. These
+	 * functions are defined to always have the same standard implementation
+	 * in PKCS#11 2.x so we don't need to call through to the base for
+	 * these guys.
+	 */
+	wrapper->bound.C_CancelFunction = short_C_CancelFunction;
+	wrapper->bound.C_GetFunctionStatus = short_C_GetFunctionStatus;
+
+	return true;
+}
+
 #if LIBFFI_FREE_CLOSURES
 static void
 uninit_wrapper_funcs (Wrapper *wrapper)
@@ -1212,6 +1252,32 @@ p11_virtual_wrap (p11_virtual *virt,
 	wrapper->bound.version.minor = CRYPTOKI_VERSION_MINOR;
 
 	if (!init_wrapper_funcs (wrapper))
+		return_val_if_reached (NULL);
+
+	assert ((void *)wrapper == (void *)&wrapper->bound);
+	assert (p11_virtual_is_wrapper (&wrapper->bound));
+	assert (wrapper->bound.C_GetFunctionList != NULL);
+	return &wrapper->bound;
+}
+
+CK_FUNCTION_LIST *
+p11_virtual_wrap_fixed (p11_virtual *virt,
+			size_t index,
+			p11_destroyer destroyer)
+{
+	Wrapper *wrapper;
+
+	return_val_if_fail (virt != NULL, NULL);
+
+	wrapper = calloc (1, sizeof (Wrapper));
+	return_val_if_fail (wrapper != NULL, NULL);
+
+	wrapper->virt = virt;
+	wrapper->destroyer = destroyer;
+	wrapper->bound.version.major = CRYPTOKI_VERSION_MAJOR;
+	wrapper->bound.version.minor = CRYPTOKI_VERSION_MINOR;
+
+	if (!init_wrapper_funcs_fixed (wrapper, &p11_virtual_fixed[index]))
 		return_val_if_reached (NULL);
 
 	assert ((void *)wrapper == (void *)&wrapper->bound);

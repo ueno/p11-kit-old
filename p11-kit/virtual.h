@@ -61,8 +61,14 @@ bool                    p11_virtual_can_wrap   (void);
 CK_FUNCTION_LIST *      p11_virtual_wrap       (p11_virtual *virt,
                                                 p11_destroyer destroyer);
 
+CK_FUNCTION_LIST *      p11_virtual_wrap_fixed (p11_virtual *virt,
+                                                size_t index,
+                                                p11_destroyer destroyer);
+
 bool                    p11_virtual_is_wrapper (CK_FUNCTION_LIST *module);
 
 void                    p11_virtual_unwrap     (CK_FUNCTION_LIST *module);
+
+CK_FUNCTION_LIST *      _p11_modules_get_fixed_closure (int index);
 
 #endif /* __P11_VIRTUAL_H__ */

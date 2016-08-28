@@ -142,7 +142,8 @@ P11_INDENT_RE = re.compile(r' {8}')
 
 Config = typing.NamedTuple('Config',
                            [('parser', Parser),
-                            ('exclude', [str])])
+                            ('exclude', [str]),
+                            ('fixed_number', int)])
 
 def format_type(type):
     if not type.endswith('*') and not type.endswith(' '):
@@ -278,9 +279,110 @@ ${initializer_list}
     def wrapper_function_name(self, function):
         return 'stack_C_{function}'.format(function=function.name)
 
+class FixedFunctionTemplate(FunctionTemplate):
+    def __init__(self):
+        super(FixedFunctionTemplate, self).__init__('''\
+static CK_RV \\
+${wrapper_function_name} (${arglist}) \\
+{ \\
+	CK_FUNCTION_LIST *bound; \\
+	Wrapper *wrapper; \\
+	CK_X_FUNCTION_LIST *funcs; \\
+	bound = _p11_modules_get_fixed_closure (fixed_index); \\
+	return_val_if_fail (bound != NULL, CKR_GENERAL_ERROR); \\
+	wrapper = (Wrapper *) bound; \\
+	funcs = &wrapper->virt->funcs; \\
+	return funcs->C_${function_name} (funcs, ${args}); \\
+} \\
+\\''')
+
+    @property
+    def arglist(self):
+        return ', \\\n'.join(super(FixedFunctionTemplate, self).get_arglist()).strip()
+
+class FixedFileTemplate(FileTemplate):
+    def __init__(self, config):
+        super(FixedFileTemplate, self).__init__('''\
+#define P11_VIRTUAL_FIXED_FUNCTIONS(fixed_index) \\
+${function_list}
+static CK_RV \\
+fixed ## fixed_index ## _C_GetFunctionList (CK_FUNCTION_LIST_PTR_PTR list);
+
+#define P11_VIRTUAL_FIXED_GET_FUNCTION_LIST(fixed_index) \\
+static CK_RV \\
+fixed ## fixed_index ## _C_GetFunctionList (CK_FUNCTION_LIST_PTR_PTR list) \\
+{ \\
+	*list = &p11_virtual_fixed[fixed_index]; \\
+        return CKR_OK; \\
+}
+
+#define P11_VIRTUAL_FIXED_INITIALIZER(fixed_index) \\
+{ \\
+	{ CRYPTOKI_VERSION_MAJOR, CRYPTOKI_VERSION_MINOR },  /* version */ \\
+${initializer_list} \\
+}
+
+${fixed_function_list}
+
+CK_FUNCTION_LIST p11_virtual_fixed[P11_VIRTUAL_MAX_FIXED] = {
+${fixed_initializer_list}
+};
+
+${fixed_get_function_list}
+''',
+        FixedFunctionTemplate(),
+        config)
+        self.__short_functions = {
+            'GetFunctionStatus': 'short_C_GetFunctionStatus',
+            'CancelFunction': 'short_C_CancelFunction',
+            'GetFunctionList': 'fixed ## fixed_index ## _C_GetFunctionList'
+        }
+
+    def wrapper_function_name(self, function):
+        return 'fixed ## fixed_index ## _C_{function}'.format(function=function.name)
+
+    @property
+    def fixed_function_list(self):
+        initializers = ['P11_VIRTUAL_FIXED_FUNCTIONS({fixed_index})'.format(fixed_index=fixed_index) for fixed_index in range(0, self.config.fixed_number)]
+        return '\n'.join(initializers)
+
+    @property
+    def fixed_initializer_list(self):
+        initializers = ['\tP11_VIRTUAL_FIXED_INITIALIZER({fixed_index})'.format(fixed_index=fixed_index) for fixed_index in range(0, self.config.fixed_number)]
+        return ',\n'.join(initializers)
+
+    @property
+    def fixed_get_function_list(self):
+        initializers = ['P11_VIRTUAL_FIXED_GET_FUNCTION_LIST({fixed_index})'.format(fixed_index=fixed_index) for fixed_index in range(0, self.config.fixed_number)]
+        return '\n'.join(initializers)
+
+    @property
+    def function_list(self):
+        result = list()
+        for function in self.config.parser.functions:
+            if function.name in self.config.exclude:
+                continue
+            if function.name in self.__short_functions:
+                continue
+            result.append(self.function_template.substitute(function=function,
+                                                            wrapper_function_name=self.wrapper_function_name(function)))
+        return '\n'.join(result)
+
+    @property
+    def initializer_list(self):
+        result = list()
+        for function in self.config.parser.functions:
+            short_function_name = self.__short_functions.get(function.name)
+            if short_function_name:
+                result.append('\t' + short_function_name)
+            else:
+                result.append('\t' + self.wrapper_function_name(function))
+        return ', \\\n'.join(result)
+
 P11_TEMPLATE = {
     'base': BaseFileTemplate,
-    'stack': StackFileTemplate
+    'stack': StackFileTemplate,
+    'fixed': FixedFileTemplate
 }
 
 if __name__ == '__main__':
@@ -288,12 +390,15 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='gen-wrapper')
-    parser.add_argument('template', choices=['base', 'stack'],
+    parser.add_argument('template', choices=['base', 'stack', 'fixed'],
                         help='name of the template')
     parser.add_argument('pkcs11', type=argparse.FileType('r'),
                         help='the pkcs11.h header file')
     parser.add_argument('pkcs11i', type=argparse.FileType('r'),
                         help='the pkcs11i.h header file')
+    parser.add_argument('-n', '--fixed-number', type=int,
+                        default=64,
+                        help='exclude functions')
     parser.add_argument('-x', '--exclude', action='append', type=str,
                         default=[],
                         help='exclude functions')
@@ -302,5 +407,5 @@ if __name__ == '__main__':
     parser = Parser()
     parser.parse(args.pkcs11, args.pkcs11i)
     template = P11_TEMPLATE[args.template]
-    config = Config(parser, args.exclude)
+    config = Config(parser, args.exclude, args.fixed_number)
     print(template(config).substitute())

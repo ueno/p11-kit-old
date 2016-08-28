@@ -172,6 +172,7 @@ static struct _Shared {
 	p11_dict *unmanaged_by_funcs;
 	p11_dict *managed_by_closure;
 	p11_dict *config;
+	CK_FUNCTION_LIST *fixed_closures[P11_VIRTUAL_MAX_FIXED];
 } gl = { NULL, NULL };
 
 /* These are global variables to be overridden in tests */
@@ -1779,6 +1780,8 @@ release_module_inlock_rentrant (CK_FUNCTION_LIST *module,
 
 	/* See if a managed module, and finalize if so */
 	if (p11_virtual_is_wrapper (module)) {
+		size_t index;
+
 		mod = p11_dict_get (gl.managed_by_closure, module);
 		if (mod != NULL) {
 			if (!p11_dict_remove (gl.managed_by_closure, module))
@@ -1786,6 +1789,12 @@ release_module_inlock_rentrant (CK_FUNCTION_LIST *module,
 			p11_virtual_unwrap (module);
 		}
 
+		for (index = 0; index < P11_VIRTUAL_MAX_FIXED; index++) {
+			if (gl.fixed_closures[index] == module) {
+				gl.fixed_closures[index] = NULL;
+				break;
+			}
+		}
 	/* If an unmanaged module then caller should have finalized */
 	} else {
 		mod = p11_dict_get (gl.unmanaged_by_funcs, module);
@@ -1861,6 +1870,18 @@ prepare_module_inlock_reentrant (Module *mod,
 		}
 
 		*module = p11_virtual_wrap (virt, destroyer);
+		if (!*module) {
+			size_t index;
+
+			for (index = 0; index < P11_VIRTUAL_MAX_FIXED; index++)
+				if (gl.fixed_closures[index] == NULL)
+					break;
+			if (index < P11_VIRTUAL_MAX_FIXED) {
+				*module = p11_virtual_wrap_fixed (virt, index, destroyer);
+				if (*module)
+					gl.fixed_closures[index] = *module;
+			}
+		}
 		return_val_if_fail (*module != NULL, CKR_GENERAL_ERROR);
 
 		if (!p11_dict_set (gl.managed_by_closure, *module, mod))
@@ -2697,4 +2718,16 @@ p11_kit_load_initialize_module (const char *module_path,
 
 	p11_debug ("out: %lu", rv);
 	return rv;
+}
+
+CK_FUNCTION_LIST *
+_p11_modules_get_fixed_closure (int index)
+{
+	return_val_if_fail (0 <= index && index < P11_VIRTUAL_MAX_FIXED, NULL);
+
+	/*
+	 * No need to protect this access by p11_lock(); because
+	 * reading a single aligned memory word is atomic.
+	 */
+	return gl.fixed_closures[index];
 }
